@@ -41,4 +41,5 @@ jobs:
           --source . \
           --region ${{ secrets.GCP_REGION }} \
           --platform managed \
+          --service-account github-ci@etl-poc-demo1-487211.iam.gserviceaccount.com \
           --allow-unauthenticated
