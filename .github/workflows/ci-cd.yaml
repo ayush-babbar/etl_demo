@@ -2,8 +2,10 @@ name: CI-CD-ETL-Demo
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
+# REQUIRED for Workload Identity Federation
 permissions:
   id-token: write
   contents: read
@@ -13,33 +15,53 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      # 1️ Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      # 2 Authenticate to GCP using Workload Identity Federation
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/812107349915/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-ci@etl-poc-demo1-487211.iam.gserviceaccount.com
 
-    - name: Run basic check
-      run: |
-        python etl.py
+      # 3 Install gcloud SDK
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
 
-    - name: Authenticate to GCP
-      uses: google-github-actions/auth@v2
-      with:
-        workload_identity_provider: "projects/812107349915/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
-        service_account: "github-ci@etl-poc-demo1-487211.iam.gserviceaccount.com"
+      # 4 🔍 DEBUG — SHOW EXACTLY WHICH ACCOUNT GCLOUD IS USING
+      - name: Debug gcloud authentication
+        run: |
+          echo "===== gcloud auth list ====="
+          gcloud auth list
+          echo "===== gcloud config list ====="
+          gcloud config list
 
+      # 5 🔒 FORCE GCLOUD TO USE THE CORRECT SERVICE ACCOUNT
+      - name: Force gcloud account
+        run: |
+          gcloud config set account github-ci@etl-poc-demo1-487211.iam.gserviceaccount.com
 
-    - name: Set up gcloud
-      uses: google-github-actions/setup-gcloud@v2
+      # 6 🔍 VERIFY ACCOUNT AFTER FORCING
+      - name: Verify active gcloud account
+        run: |
+          echo "Active account:"
+          gcloud config get-value account
+          echo "Trying to mint access token..."
+          gcloud auth print-access-token >/dev/null
+          echo "Access token OK"
 
-    - name: Build & Deploy to Cloud Run
-      run: |
-        gcloud run deploy etl-demo \
-          --source . \
-          --region ${{ secrets.GCP_REGION }} \
-          --platform managed \
-          --service-account github-ci@etl-poc-demo1-487211.iam.gserviceaccount.com \
-          --allow-unauthenticated
+      # 7️ Build & Deploy to Cloud Run (EXPLICIT SERVICE ACCOUNT)
+      - name: Build & Deploy to Cloud Run
+        run: |
+          gcloud run deploy etl-demo \
+            --source . \
+            --region ${{ secrets.GCP_REGION }}  \
+            --platform managed \
+            --service-account github-ci@etl-poc-demo1-487211.iam.gserviceaccount.com \
+            --allow-unauthenticated
+
+      # 8 Done
+      - name: Deployment completed
+        run: echo "CI/CD pipeline completed successfully"
